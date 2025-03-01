@@ -3,4 +3,4 @@ project(LeetCode)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(LeetCode 543_Diameter_of_Binary_Tree.cpp)
+add_executable(LeetCode 21_Merge_Two_Sorted_Lists.cpp)
