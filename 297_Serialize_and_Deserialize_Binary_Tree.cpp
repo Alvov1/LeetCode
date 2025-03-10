@@ -1,136 +1,178 @@
 #include <iostream>
 #include <sstream>
 #include <map>
+#include <regex>
 
+/*
+ * Solution is terrible in timing, for several reasons:
+ * 1. Regex could be removed for more simple decoding.
+ * 2. STD::STOI then would also be removed
+ * 3. Algorithm could benefit from current pointer position
+ *
+ * I focused here to more on encoding/decoding algorithm rather than on speed and timing
+ */
 
-std::map<int, std::string> required = {
-	{0, "7, 2"}, {10, "0, 0"}, {20, "0, 6"},
-	{30, "8, 9"}, {40, "3, 0"}, {50, "0, 0"},
-	{60, "1, 0"}, {70, "5, 4"}, {80, "0, 0"},
-	{90, "0, 0"}
-};
-
-template <typename Contained = int>
 struct TreeNode {
-	int value;
-	TreeNode* left;
-	TreeNode* right;
-	TreeNode(int x) : value(x), left(NULL), right(NULL) {}
+	int val = -1;
+	TreeNode* left = nullptr;
+	TreeNode* right = nullptr;
 
-	TreeNode(const std::vector<std::tuple<Contained, Contained, Contained>>& vertexes, long long position): left {}, right {} {
-		auto [key, leftV, rightV] = vertexes[position];
-		value = key;
-		if(leftV != 0)
-			left = new TreeNode (vertexes, leftV);
-		if(rightV != 0)
-			right = new TreeNode (vertexes, rightV);
-	}
-
-	void postorderTraversal(std::stringstream& ss, std::string code) const {
-		if(left)
-			left->postorderTraversal(ss, code);
-		if(right)
-			right->postorderTraversal(ss, code);
-		std::cout << code << " - " << value << ", ";
-	}
-
-	void preorderTraversal() const {
-		std::cout << value << ' ';
-		if(left)
-			left->preorderTraversal();
-		if(right)
-			right->preorderTraversal();
-	}
-
-	void inorderTraversal() const {
-		if(left)
-			left->inorderTraversal();
-		std::cout << value << ' ';
-		if(right)
-			right->inorderTraversal();
-	}
+	TreeNode() = default;
+	explicit TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}
 };
 
 
 class Codec {
-	static int traverse(TreeNode<int>* root, std::stringstream& out, std::size_t level) {
-		auto leftLevel = root->left != nullptr ?
-			traverse(root->left, out, level + 1) : 0;
-		auto rightLevel = root->right != nullptr ?
-			traverse(root->right, out, level + 2) : 0;
+	static void postorderTraversal(TreeNode* ptr, std::stringstream& ss, const std::string& code) {
+		if (ptr->left)
+			postorderTraversal(ptr->left, ss, code + '0');
+		if (ptr->right)
+			postorderTraversal(ptr->right, ss, code + '1');
+		ss << "{\"" << code << "\"," << ptr->val << "}";
+	}
 
-		std::cout << "(" << root->value << ' ' << leftLevel << ' ' << rightLevel << ") - ("
-			<< root->value << ' ' << required[root->value] << ')' << std::endl;
+	static TreeNode* generate(const std::vector<std::pair<std::string, int>>& values) {
+		TreeNode* root = new TreeNode(0);
+		for (auto& [code, value] : values) {
+			TreeNode* ptr = root;
+			for (char bit : code) {
+				if (bit == '0') {
+					if (ptr->left == nullptr)
+						ptr->left = new TreeNode ();
+					ptr = ptr->left;
+				} else if (bit == '1') {
+					if (ptr->right == nullptr)
+						ptr->right = new TreeNode ();
+					ptr = ptr->right;
+				} else throw std::invalid_argument("Invalid bit code");
+			}
+			ptr->val = value;
+		}
+		return root;
+	}
 
-		return level;
+	static std::vector<std::pair<std::string, int>> getValues(const std::string& data) {
+		std::vector<std::pair<std::string, int>> values {};
+
+		const std::regex pattern(R"(\{\"(\d*)\",(-*\d+)\})");
+		for(auto i = std::sregex_iterator(data.begin(), data.end(), pattern);
+							i != std::sregex_iterator();
+							++i )
+		{
+			const std::smatch& m = *i;
+			values.emplace_back(m[1].str(), std::stoi(m[2].str()));
+		}
+
+		return values;
 	}
 public:
+	static std::string serialize(TreeNode* root) {
+		if (root == nullptr)
+			return "";
 
-	static void serialize(TreeNode<int>* root) {
 		std::stringstream ss {};
-		traverse(root, ss, 0);
+		postorderTraversal(root, ss, "");
+		return ss.str();
+	};
+	static TreeNode* deserialize(const std::string& data) {
+		if (data.empty())
+			return nullptr;
+		const auto values = getValues(data);
+		return generate(values);
 	}
-
-	static TreeNode<int>* load_trash(std::string& data) {
-		std::stringstream ss(data);
-
-		std::size_t total = 0;
-		ss >> total;
-		std::vector<std::tuple<int, int, int>> vertexes {};
-		vertexes.reserve(total);
-
-		for (int a {}, b {}, c {}; ss >> a >> b >> c; )
-			vertexes.emplace_back(a, b, c);
-
-		return new TreeNode<int>(vertexes, 0);
-	}
-
-	static TreeNode<int>* deserialize(std::string& data);
 };
 
 int main() {
 	{
-		std::string ss = "10 0 7 2 10 0 0 20 0 6 30 8 9 40 3 0 50 0 0 60 1 0 70 5 4 80 0 0 90 0 0";
-		auto root = Codec::load_trash(ss);
-		std::stringstream sss {};
-		root->postorderTraversal(sss, "0");
+		const auto str = R"({"00",50}{"0100",80}{"0101",90}{"010",30}{"01",40}{"0",70}{"110",10}{"11",60}{"1",20}{"",0})";
+		auto root = Codec::deserialize(str);
+
+		const auto str2 = Codec::serialize(root);
+		if (str != str2) {
+			std::cout << str << std::endl << str2 << std::endl;
+			throw std::runtime_error("Serialization Error");
+		}
 	}
 
-	// {
-	// 	std::vector<std::tuple<int, int, int>> vertexes = {
-	// 		{0, 7, 2}, {10, -1, -1}, {20, -1, 6},
-	// 		{30, 8, 9}, {40, 3, -1}, {50, -1, -1},
-	// 		{60, 1, -1}, {70, 5, 4}, {80, -1, -1},
-	// 		{90, -1, -1} };
-	// 	auto root = TreeNode(vertexes, 0);
-	// 	std::cout << std::endl;
-	// }
-	// {
-	// 	TreeNode<int>* root = new TreeNode(1);
-	//
-	// 	root->left = new TreeNode(2);
-	// 	root->right = new TreeNode(3);
-	//
-	// 	root->left->left = new TreeNode(4);
-	// 	root->left->right = new TreeNode(5);
-	//
-	// 	root->right->left = new TreeNode(6);
-	// 	root->right->right = new TreeNode(7);
-	//
-	// 	root->left->left->left = new TreeNode(8);
-	// 	root->left->left->right = new TreeNode(9);
-	//
-	// 	root->left->right->left = new TreeNode(10);
-	// 	root->left->right->right = new TreeNode(11);
-	//
-	// 	Codec().serialize(root);
-	// 	std::cout << std::endl << std::endl;
-	// }
-	// {
-	// 	TreeNode* root = new TreeNode(1);
-	// 	root->left = new TreeNode(2);
-	//
-	// 	Codec().serialize(root);
-	// 	std::cout << std::endl << std::endl;
-	// }
+	{
+		TreeNode* root = new TreeNode(1);
+
+		root->left = new TreeNode(2);
+		root->right = new TreeNode(3);
+
+		root->left->left = new TreeNode(4);
+		root->left->right = new TreeNode(5);
+
+		root->right->left = new TreeNode(6);
+		root->right->right = new TreeNode(7);
+
+		root->left->left->left = new TreeNode(8);
+		root->left->left->right = new TreeNode(9);
+
+		root->left->right->left = new TreeNode(10);
+		root->left->right->right = new TreeNode(11);
+
+		const auto str = Codec::serialize(root);
+		auto root2 = Codec::deserialize(str);
+
+		const auto str2 = Codec::serialize(root2);
+		if (str != str2) {
+			std::cout << str << std::endl << str2 << std::endl;
+			throw std::runtime_error("Serialization Error");
+		}
+	}
+
+	{
+		TreeNode* root = nullptr;
+		const auto str = Codec::serialize(root);
+
+		auto root2 = Codec::deserialize(str);
+		if (root2 != nullptr)
+			throw std::runtime_error("Serialization Error");
+
+		const auto str2 = Codec::serialize(root2);
+
+		if (str != str2) {
+			std::cout << str << std::endl << str2 << std::endl;
+			throw std::runtime_error("Serialization Error");
+		}
+	}
+
+	{
+		TreeNode* root = new TreeNode(4);
+		root->left = new TreeNode(-7);
+		root->right = new TreeNode(-3);
+
+		root->right->left = new TreeNode(-9);
+		root->right->right = new TreeNode(-3);
+
+		root->right->left->left = new TreeNode(9);
+		root->right->left->right = new TreeNode(-7);
+		root->right->right->left = new TreeNode(-4);
+
+		root->right->left->left->left = new TreeNode(6);
+		root->right->left->right->left = new TreeNode(-6);
+		root->right->left->right->right = new TreeNode(-6);
+
+		root->right->left->left->left->left = new TreeNode( 0);
+		root->right->left->left->left->right = new TreeNode( 6);
+		root->right->left->right->left->left = new TreeNode( 5);
+		root->right->left->right->right->left = new TreeNode( 9);
+
+		root->right->left->left->left->left->right = new TreeNode( -1);
+		root->right->left->left->left->right->left = new TreeNode( -4);
+		root->right->left->right->right->left->left = new TreeNode( -2);
+
+		const auto str = Codec::serialize(root);
+		std::cout << str << std::endl;
+
+		const auto root2 = Codec::deserialize(str);
+		const auto str2 = Codec::serialize(root2);
+		std::cout << str2 << std::endl;
+
+		if (str != str2)
+			throw std::runtime_error("Serialization Error");
+	}
+
+	return 0;
 }
